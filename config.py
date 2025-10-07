@@ -182,14 +182,14 @@ CUSTOM_CSS = """
 
 # Sample data for demonstration
 SAMPLE_DATA = [
-    ("Groceries at Walmart", 85.50, "2024-09-15", "expense", "food"),
-    ("Uber ride to airport", 45.00, "2024-09-16", "expense", "transport"),
-    ("Netflix subscription", 15.99, "2024-09-17", "expense", "entertainment"),
-    ("Salary deposit", 2500.00, "2024-09-15", "income", "general"),
-    ("Amazon shopping", 120.75, "2024-09-18", "expense", "shopping"),
-    ("Electricity bill", 85.00, "2024-01-19", "expense", "bills"),
-    ("Dinner at restaurant", 65.25, "2024-01-20", "expense", "food"),
-    ("Gas station", 45.50, "2024-01-21", "expense", "transport"),
+    ("Groceries at Walmart", 85.50, "2025-09-15", "expense", "food"),
+    ("Uber ride to airport", 45.00, "2025-09-16", "expense", "transport"),
+    ("Netflix subscription", 15.99, "2025-09-17", "expense", "entertainment"),
+    ("Salary deposit", 2500.00, "2025-09-15", "income", "general"),
+    ("Amazon shopping", 120.75, "2025-09-18", "expense", "shopping"),
+    ("Electricity bill", 85.00, "2025-08-19", "expense", "bills"),
+    ("Dinner at restaurant", 65.25, "2025-08-20", "expense", "food"),
+    ("Gas station", 45.50, "2025-08-21", "expense", "transport"),
     ("Coffee at Starbucks", 4.50, "2023-01-05", "expense", "food"),
     ("Bus ticket", 2.75, "2023-01-10", "expense", "transport"),
     ("Movie tickets", 28.00, "2023-01-15", "expense", "entertainment"),

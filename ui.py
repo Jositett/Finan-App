@@ -81,7 +81,7 @@ class FinanceUI:
         col1, col2, col3 = st.columns([1, 1, 2])
         with col1:
             start_date = st.date_input("Start Date",
-                value=datetime.now().replace(day=1))
+                value=(datetime.now() - timedelta(days=365)).replace(day=1))
         with col2:
             end_date = st.date_input("End Date",
                 value=datetime.now())
