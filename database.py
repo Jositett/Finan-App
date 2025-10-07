@@ -62,6 +62,13 @@ class FinanceDatabase:
                 hashed = bcrypt.hashpw('password'.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
                 self.conn.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', ('demo', hashed))
                 self.conn.commit()
+                # Load sample data for demo user
+                cursor = self.conn.execute('SELECT id FROM users WHERE username = ?', ('demo',))
+                demo_user_id = cursor.fetchone()[0]
+                from config import SAMPLE_DATA
+                for desc, amount, date, type_val, category in SAMPLE_DATA:
+                    self.add_transaction(demo_user_id, desc, amount, date, type_val, category)
+                self.conn.commit()
 
         except sqlite3.Error as e:
             raise RuntimeError(f"Failed to create tables: {e}")
