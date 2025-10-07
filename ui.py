@@ -193,9 +193,21 @@ class FinanceUI:
         except Exception as e:
             st.error(f"Failed to display recent transactions: {e}")
 
+    def bulk_actions_ui(self):
+        """UI for bulk import/export transactions."""
+        st.header("🔄 Bulk Actions")
+
+        tab1, tab2 = st.tabs(["Import Transactions", "Export Transactions"])
+
+        with tab1:
+            self.bulk_import_ui()
+
+        with tab2:
+            self.bulk_export_ui()
+
     def bulk_import_ui(self):
         """UI for bulk importing transactions."""
-        st.header("📥 Bulk Import Transactions")
+        st.subheader("📥 Import Transactions")
 
         uploaded_file = st.file_uploader("Upload CSV file", type=['csv'])
 
@@ -262,3 +274,51 @@ class FinanceUI:
 
             except Exception as e:
                 st.error(f"Error reading CSV file: {e}")
+
+    def bulk_export_ui(self):
+        """UI for bulk exporting transactions."""
+        st.subheader("📤 Export Transactions")
+
+        # Date range for export
+        col1, col2 = st.columns(2)
+        with col1:
+            start_date = st.date_input("Start Date", value=(datetime.now() - timedelta(days=365)).replace(day=1))
+        with col2:
+            end_date = st.date_input("End Date", value=datetime.now())
+
+        # Export format options
+        export_type = st.selectbox("Export format", ["CSV", "JSON"])
+
+        if st.button("Export Transactions"):
+            try:
+                transactions = self.db.get_transactions(
+                    self.user_id,
+                    start_date=start_date.strftime('%Y-%m-%d'),
+                    end_date=end_date.strftime('%Y-%m-%d')
+                )
+
+                if transactions.empty:
+                    st.info("No transactions found in the selected date range")
+                    return
+
+                if export_type == "CSV":
+                    csv_data = transactions[['description', 'amount', 'date', 'type', 'category']].to_csv(index=False)
+                    st.download_button(
+                        label="Download CSV",
+                        data=csv_data,
+                        file_name=f"transactions_{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}.csv",
+                        mime="text/csv"
+                    )
+                    st.success(f"✅ Prepared {len(transactions)} transactions for CSV export")
+                else:  # JSON
+                    json_data = transactions[['description', 'amount', 'date', 'type', 'category']].to_json(orient='records')
+                    st.download_button(
+                        label="Download JSON",
+                        data=json_data,
+                        file_name=f"transactions_{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}.json",
+                        mime="application/json"
+                    )
+                    st.success(f"✅ Prepared {len(transactions)} transactions for JSON export")
+
+            except Exception as e:
+                st.error(f"Failed to export transactions: {e}")

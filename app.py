@@ -30,7 +30,7 @@ def main():
         st.sidebar.title("Navigation")
         page = st.sidebar.radio(
             "Choose a page",
-            ["Dashboard", "Add Transaction", "Bulk Import", "Advanced Analytics"]
+            ["Dashboard", "Add Transaction", "Bulk Actions", "Advanced Analytics"]
         )
         st.sidebar.markdown("---")
 
@@ -53,8 +53,8 @@ def main():
             ui.display_dashboard()
         elif page == "Add Transaction":
             ui.add_transaction_ui()
-        elif page == "Bulk Import":
-            ui.bulk_import_ui()
+        elif page == "Bulk Actions":
+            ui.bulk_actions_ui()
         elif page == "Advanced Analytics":
             from analytics import show_advanced_analytics
             show_advanced_analytics(db, user_id)
