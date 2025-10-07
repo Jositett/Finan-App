@@ -134,7 +134,7 @@ def show_advanced_analytics(db: FinanceDatabase, user_id: int):
 
         with col2:
             # Category trend over time
-            category_trend = transactions[transactions['type'] == 'expense']
+            category_trend = transactions[transactions['type'] == 'expense'].copy()
             if not category_trend.empty:
                 try:
                     category_trend['month'] = category_trend['date'].dt.to_period('M')

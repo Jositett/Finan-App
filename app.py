@@ -28,10 +28,11 @@ def main():
         # Sidebar navigation
         show_auth_status()
         st.sidebar.title("Navigation")
-        page = st.sidebar.selectbox(
+        page = st.sidebar.radio(
             "Choose a page",
             ["Dashboard", "Add Transaction", "Bulk Import", "Advanced Analytics"]
         )
+        st.sidebar.markdown("---")
 
         # Sample data initialization
         if st.sidebar.button("Load Sample Data"):
