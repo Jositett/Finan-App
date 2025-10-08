@@ -133,6 +133,16 @@ CUSTOM_CSS = """
         transition: border-color 0.2s ease;
     }
 
+    /* Fix dropdown truncation */
+    .stSelectbox > div > div > div {
+        min-height: 45px !important;
+        height: auto !important;
+        line-height: normal !important;
+        display: flex !important;
+        align-items: center !important;
+        overflow: visible !important;
+    }
+
     .stTextInput > div > div > input:focus,
     .stSelectbox > div > div > div:focus,
     .stNumberInput > div > div > input:focus {

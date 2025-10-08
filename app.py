@@ -28,10 +28,22 @@ def main():
         # Sidebar navigation
         show_auth_status()
         st.sidebar.title("Navigation")
-        page = st.sidebar.radio(
-            "Choose a page",
-            ["Dashboard", "Add Transaction", "Bulk Actions", "Advanced Analytics"]
-        )
+
+        # Navigation buttons instead of radio
+        if st.sidebar.button("🏠 Dashboard", use_container_width=True):
+            st.session_state.page = "Dashboard"
+        if st.sidebar.button("📊 Manage Transactions", use_container_width=True):
+            st.session_state.page = "Manage Transactions"
+        if st.sidebar.button("🔄 Bulk Actions", use_container_width=True):
+            st.session_state.page = "Bulk Actions"
+        if st.sidebar.button("📈 Advanced Analytics", use_container_width=True):
+            st.session_state.page = "Advanced Analytics"
+
+        # Set default page if not set
+        if "page" not in st.session_state:
+            st.session_state.page = "Dashboard"
+
+        page = st.session_state.page
         st.sidebar.markdown("---")
 
         # Sample data initialization
@@ -51,8 +63,8 @@ def main():
         # Page routing
         if page == "Dashboard":
             ui.display_dashboard()
-        elif page == "Add Transaction":
-            ui.add_transaction_ui()
+        elif page == "Manage Transactions":
+            ui.manage_transactions_ui()
         elif page == "Bulk Actions":
             ui.bulk_actions_ui()
         elif page == "Advanced Analytics":

@@ -246,6 +246,100 @@ class FinanceDatabase:
         except sqlite3.Error as e:
             raise RuntimeError(f"Failed to create user: {e}")
 
+    def update_transaction(self, user_id, transaction_id, description=None, amount=None, date=None, type=None, category=None, receipt_image=None):
+        """Update an existing transaction."""
+        if not isinstance(user_id, int) or user_id <= 0:
+            raise ValueError("user_id must be a positive integer")
+
+        if not isinstance(transaction_id, int) or transaction_id <= 0:
+            raise ValueError("transaction_id must be a positive integer")
+
+        # Validate that the transaction belongs to the user
+        cursor = self.conn.execute('SELECT id FROM transactions WHERE id = ? AND user_id = ?', (transaction_id, user_id))
+        if not cursor.fetchone():
+            raise ValueError("Transaction not found or does not belong to user")
+
+        # Build update query dynamically based on provided fields
+        update_fields = []
+        params = []
+
+        if description is not None:
+            if not isinstance(description, str) or not description.strip():
+                raise ValueError("Description must be a non-empty string")
+            update_fields.append("description = ?")
+            params.append(description.strip())
+
+        if amount is not None:
+            if not isinstance(amount, (int, float)) or amount <= 0:
+                raise ValueError("Amount must be a positive number")
+            update_fields.append("amount = ?")
+            params.append(amount)
+
+        if date is not None:
+            try:
+                datetime.strptime(date, '%Y-%m-%d')
+            except ValueError:
+                raise ValueError("Date must be in YYYY-MM-DD format")
+            update_fields.append("date = ?")
+            params.append(date)
+
+        if type is not None:
+            if type not in ['income', 'expense']:
+                raise ValueError("Type must be 'income' or 'expense'")
+            update_fields.append("type = ?")
+            params.append(type)
+
+        if category is not None:
+            if not isinstance(category, str):
+                raise ValueError("Category must be a string")
+            update_fields.append("category = ?")
+            params.append(category)
+
+        if receipt_image is not None:
+            update_fields.append("receipt_image = ?")
+            params.append(receipt_image)
+
+        if not update_fields:
+            raise ValueError("At least one field must be provided for update")
+
+        query = f"UPDATE transactions SET {', '.join(update_fields)} WHERE id = ? AND user_id = ?"
+        params.extend([transaction_id, user_id])
+
+        try:
+            self.conn.execute(query, params)
+            self.conn.commit()
+
+            # Verify the update occurred
+            if self.conn.total_changes == 0:
+                raise RuntimeError("No transaction was updated")
+
+        except sqlite3.Error as e:
+            raise RuntimeError(f"Failed to update transaction: {e}")
+
+    def delete_transaction(self, user_id, transaction_id):
+        """Delete a transaction."""
+        if not isinstance(user_id, int) or user_id <= 0:
+            raise ValueError("user_id must be a positive integer")
+
+        if not isinstance(transaction_id, int) or transaction_id <= 0:
+            raise ValueError("transaction_id must be a positive integer")
+
+        # Validate that the transaction belongs to the user
+        cursor = self.conn.execute('SELECT id FROM transactions WHERE id = ? AND user_id = ?', (transaction_id, user_id))
+        if not cursor.fetchone():
+            raise ValueError("Transaction not found or does not belong to user")
+
+        try:
+            self.conn.execute('DELETE FROM transactions WHERE id = ? AND user_id = ?', (transaction_id, user_id))
+            self.conn.commit()
+
+            # Verify the deletion occurred
+            if self.conn.total_changes == 0:
+                raise RuntimeError("No transaction was deleted")
+
+        except sqlite3.Error as e:
+            raise RuntimeError(f"Failed to delete transaction: {e}")
+
     def get_user_by_username(self, username):
         """Get user by username."""
         if not username or not isinstance(username, str):

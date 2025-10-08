@@ -15,25 +15,180 @@ class FinanceUI:
         self.user_id = user_id
         self.classifier = ExpenseClassifier()
 
-    def add_transaction_ui(self):
-        """UI for adding new transactions with improved validation."""
-        st.header("➕ Add New Transaction")
+    def manage_transactions_ui(self):
+        """Comprehensive UI for managing transactions with full CRUD operations."""
+        st.header("📊 Manage Transactions")
 
-        with st.form("transaction_form"):
+        # Initialize session state for transaction management
+        if "selected_transaction" not in st.session_state:
+            st.session_state.selected_transaction = None
+        if "edit_mode" not in st.session_state:
+            st.session_state.edit_mode = False
+        if "delete_confirm" not in st.session_state:
+            st.session_state.delete_confirm = False
+
+        # Get all transactions
+        try:
+            transactions_df = self.db.get_transactions(self.user_id)
+        except Exception as e:
+            st.error(f"Failed to load transactions: {e}")
+            return
+
+        # Create/Edit/Delete Forms Section
+        st.subheader("Transaction Operations")
+
+        # Tabs for different operations
+        tab1, tab2, tab3 = st.tabs(["➕ Add Transaction", "✏️ Edit Transaction", "🗑️ Delete Transaction"])
+
+        with tab1:
+            self._add_transaction_form()
+
+        with tab2:
+            self._edit_transaction_form(transactions_df)
+
+        with tab3:
+            self._delete_transaction_form(transactions_df)
+
+        # Transactions Table Section
+        st.subheader("📋 All Transactions")
+
+        if transactions_df.empty:
+            st.info("No transactions found. Add your first transaction above!")
+            return
+
+        # Filters
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            filter_category = st.selectbox(
+                "Filter by Category",
+                ["All"] + sorted(transactions_df['category'].unique().tolist()),
+                key="table_category_filter"
+            )
+        with col2:
+            filter_type = st.selectbox(
+                "Filter by Type",
+                ["All", "income", "expense"],
+                key="table_type_filter"
+            )
+        with col3:
+            # Date range filter
+            min_date = pd.to_datetime(transactions_df['date']).min().date()
+            max_date = pd.to_datetime(transactions_df['date']).max().date()
+            date_range = st.date_input(
+                "Date Range",
+                value=(min_date, max_date),
+                key="table_date_filter"
+            )
+
+        # Apply filters
+        filtered_df = transactions_df.copy()
+        if filter_category != "All":
+            filtered_df = filtered_df[filtered_df['category'] == filter_category]
+        if filter_type != "All":
+            filtered_df = filtered_df[filtered_df['type'] == filter_type]
+        if len(date_range) == 2:
+            start_date, end_date = date_range
+            filtered_df['date'] = pd.to_datetime(filtered_df['date'])
+            filtered_df = filtered_df[
+                (filtered_df['date'].dt.date >= start_date) &
+                (filtered_df['date'].dt.date <= end_date)
+            ]
+
+        if filtered_df.empty:
+            st.info("No transactions match the current filters.")
+            return
+
+        # Display statistics
+        total_amount = filtered_df['amount'].sum()
+        income_total = filtered_df[filtered_df['type'] == 'income']['amount'].sum()
+        expense_total = filtered_df[filtered_df['type'] == 'expense']['amount'].sum()
+        net_amount = income_total - expense_total
+
+        stat_cols = st.columns(4)
+        with stat_cols[0]:
+            st.metric("Total Transactions", len(filtered_df))
+        with stat_cols[1]:
+            st.metric("Total Amount", f"${total_amount:.2f}")
+        with stat_cols[2]:
+            st.metric("Income", f"${income_total:.2f}", delta=f"+${income_total:.2f}")
+        with stat_cols[3]:
+            st.metric("Expenses", f"${expense_total:.2f}", delta=f"-${expense_total:.2f}")
+
+        st.metric("Net Flow", f"${net_amount:.2f}", delta=f"${net_amount:.2f}")
+
+        # Prepare display dataframe
+        display_df = filtered_df.copy()
+        display_df['date'] = pd.to_datetime(display_df['date']).dt.strftime('%Y-%m-%d')
+        display_df['amount'] = display_df.apply(
+            lambda row: f"${row['amount']:.2f}" +
+                       (" 🟢" if row['type'] == 'income' else " 🔴"), axis=1
+        )
+        display_df = display_df[['date', 'description', 'amount', 'category', 'type']]
+
+        # Display data with selection
+        event = st.dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row"
+        )
+
+        # Handle row selection
+        if len(event.selection.rows) > 0:
+            selected_idx = event.selection.rows[0]
+            selected_transaction = filtered_df.iloc[selected_idx]
+            st.session_state.selected_transaction = selected_transaction['id']
+
+            # Show selected transaction details
+            st.info(f"Selected transaction: **{selected_transaction['description']}** - ${selected_transaction['amount']:.2f}")
+
+            # Action buttons for selected transaction
+            action_col1, action_col2, action_col3 = st.columns(3)
+            with action_col1:
+                if st.button("✏️ Quick Edit", use_container_width=True):
+                    st.session_state.edit_mode = True
+                    st.rerun()
+            with action_col2:
+                if st.button("🗑️ Quick Delete", use_container_width=True):
+                    st.session_state.delete_confirm = True
+                    st.rerun()
+            with action_col3:
+                if st.button("📄 View Details", use_container_width=True):
+                    self._show_transaction_details(selected_transaction)
+
+            # Render edit and delete forms directly below the action buttons
+            # Get the transaction data from the full (unfiltered) dataset to ensure consistency
+            selected_transaction_data = transactions_df[transactions_df['id'] == st.session_state.selected_transaction]
+
+            if st.session_state.edit_mode and not selected_transaction_data.empty:
+                st.markdown("---")  # Visual separator
+                self._inline_edit_transaction_form(selected_transaction_data.iloc[0])
+
+            if st.session_state.delete_confirm and not selected_transaction_data.empty:
+                st.markdown("---")  # Visual separator
+                self._inline_delete_transaction_form(selected_transaction_data.iloc[0])
+
+        else:
+            st.session_state.selected_transaction = None
+
+    def _add_transaction_form(self):
+        """Form for adding new transactions."""
+        with st.form("add_transaction_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
 
             with col1:
                 description = st.text_input("Description", placeholder="e.g., Grocery shopping at Walmart")
                 amount = st.number_input("Amount", min_value=0.0, step=0.01, format="%.2f")
-                trans_type = st.selectbox("Type", ["expense", "income"])
+                trans_type = st.selectbox("Type", ["expense", "income"], key="add_type")
 
             with col2:
-                date = st.date_input("Date", value=datetime.now())
+                date = st.date_input("Date", value=datetime.now(), key="add_date")
                 category_options = list(CATEGORIES.keys()) + ['general', 'miscellaneous']
-                category = st.selectbox("Category", category_options)
-                receipt = st.file_uploader("Receipt (optional)", type=['png', 'jpg', 'jpeg'])
+                category = st.selectbox("Category", category_options, key="add_category")
+                receipt = st.file_uploader("Receipt (optional)", type=['png', 'jpg', 'jpeg'], key="add_receipt")
 
-            submitted = st.form_submit_button("Add Transaction")
+            submitted = st.form_submit_button("✅ Add Transaction")
 
             if submitted:
                 try:
@@ -72,6 +227,356 @@ class FinanceUI:
                     st.error(f"Invalid input: {e}")
                 except Exception as e:
                     st.error(f"Failed to add transaction: {e}")
+
+    def _edit_transaction_form(self, transactions_df):
+        """Form for editing selected transactions in tabs (only when no inline selection)."""
+        # Only show tab form if no transaction is selected for inline editing
+        if (st.session_state.edit_mode or st.session_state.selected_transaction) and not st.session_state.selected_transaction:
+            if st.session_state.selected_transaction:
+                try:
+                    # Get transaction details
+                    transaction = transactions_df[transactions_df['id'] == st.session_state.selected_transaction].iloc[0]
+
+                    st.write("Editing transaction:", f"**{transaction['description']}**")
+
+                    with st.form("edit_transaction_form"):
+                        col1, col2 = st.columns(2)
+
+                        with col1:
+                            description = st.text_input(
+                                "Description",
+                                value=transaction['description'],
+                                key="edit_description"
+                            )
+                            amount = st.number_input(
+                                "Amount",
+                                value=float(transaction['amount']),
+                                min_value=0.0,
+                                step=0.01,
+                                format="%.2f",
+                                key="edit_amount"
+                            )
+                            trans_type = st.selectbox(
+                                "Type",
+                                ["expense", "income"],
+                                index=0 if transaction['type'] == 'expense' else 1,
+                                key="edit_type"
+                            )
+
+                        with col2:
+                            date = st.date_input(
+                                "Date",
+                                value=pd.to_datetime(transaction['date']),
+                                key="edit_date"
+                            )
+                            category_options = list(CATEGORIES.keys()) + ['general', 'miscellaneous']
+                            category_index = category_options.index(transaction['category']) if transaction['category'] in category_options else 0
+                            category = st.selectbox(
+                                "Category",
+                                category_options,
+                                index=category_index,
+                                key="edit_category"
+                            )
+                            receipt = st.file_uploader(
+                                "Update Receipt (optional)",
+                                type=['png', 'jpg', 'jpeg'],
+                                key="edit_receipt"
+                            )
+
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            update_submitted = st.form_submit_button("💾 Update Transaction")
+                        with col2:
+                            cancel_edit = st.form_submit_button("❌ Cancel")
+
+                        if update_submitted:
+                            try:
+                                # Validation
+                                if not description.strip():
+                                    st.error("Description is required")
+                                    return
+
+                                if amount <= 0:
+                                    st.error("Amount must be greater than 0")
+                                    return
+
+                                date_str = date.strftime('%Y-%m-%d')
+
+                                receipt_data = transaction['receipt_image']
+                                if receipt:
+                                    # Validate file size (max 5MB)
+                                    if receipt.size > 5 * 1024 * 1024:
+                                        st.error("Receipt file size must be less than 5MB")
+                                        return
+                                    receipt_data = base64.b64encode(receipt.read()).decode()
+
+                                # Update transaction
+                                self.db.update_transaction(
+                                    user_id=self.user_id,
+                                    transaction_id=int(transaction['id']),
+                                    description=description.strip(),
+                                    amount=amount,
+                                    date=date_str,
+                                    type=trans_type,
+                                    category=category,
+                                    receipt_image=receipt_data
+                                )
+                                st.success("✅ Transaction updated successfully!")
+
+                                # Reset edit mode
+                                st.session_state.edit_mode = False
+                                st.session_state.selected_transaction = None
+                                st.rerun()
+
+                            except ValueError as e:
+                                st.error(f"Invalid input: {e}")
+                            except Exception as e:
+                                st.error(f"Failed to update transaction: {e}")
+
+                        if cancel_edit:
+                            st.session_state.edit_mode = False
+                            st.session_state.selected_transaction = None
+                            st.rerun()
+
+                except IndexError:
+                    st.error("Transaction not found. It may have been deleted.")
+                    st.session_state.selected_transaction = None
+                    st.session_state.edit_mode = False
+                except Exception as e:
+                    st.error(f"Error loading transaction details: {e}")
+                    st.session_state.selected_transaction = None
+                    st.session_state.edit_mode = False
+            else:
+                st.info("Select a transaction from the table below to edit it.")
+        else:
+            st.info("Select a transaction from the table below or use the '✏️ Quick Edit' button.")
+
+    def _inline_edit_transaction_form(self, transaction):
+        """Inline form for editing selected transactions directly below action buttons."""
+        try:
+            # Transaction is already passed as a single row (Series or dict)
+            st.markdown("**Editing Transaction**")
+            st.caption(f"Original: {transaction['description']} - ${transaction['amount']:.2f}")
+
+            with st.form("inline_edit_transaction_form"):
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    description = st.text_input(
+                        "Description",
+                        value=transaction['description'],
+                        key="inline_edit_description"
+                    )
+                    amount = st.number_input(
+                        "Amount",
+                        value=float(transaction['amount']),
+                        min_value=0.0,
+                        step=0.01,
+                        format="%.2f",
+                        key="inline_edit_amount"
+                    )
+                    trans_type = st.selectbox(
+                        "Type",
+                        ["expense", "income"],
+                        index=0 if transaction['type'] == 'expense' else 1,
+                        key="inline_edit_type"
+                    )
+
+                with col2:
+                    date = st.date_input(
+                        "Date",
+                        value=pd.to_datetime(transaction['date']),
+                        key="inline_edit_date"
+                    )
+                    category_options = list(CATEGORIES.keys()) + ['general', 'miscellaneous']
+                    category_index = category_options.index(transaction['category']) if transaction['category'] in category_options else 0
+                    category = st.selectbox(
+                        "Category",
+                        category_options,
+                        index=category_index,
+                        key="inline_edit_category"
+                    )
+                    receipt = st.file_uploader(
+                        "Update Receipt (optional)",
+                        type=['png', 'jpg', 'jpeg'],
+                        key="inline_edit_receipt"
+                    )
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    update_submitted = st.form_submit_button("💾 Update Transaction")
+                with col2:
+                    cancel_edit = st.form_submit_button("❌ Cancel")
+
+                if update_submitted:
+                    try:
+                        # Validation
+                        if not description.strip():
+                            st.error("Description is required")
+                            return
+
+                        if amount <= 0:
+                            st.error("Amount must be greater than 0")
+                            return
+
+                        date_str = date.strftime('%Y-%m-%d')
+
+                        receipt_data = transaction['receipt_image']
+                        if receipt:
+                            # Validate file size (max 5MB)
+                            if receipt.size > 5 * 1024 * 1024:
+                                st.error("Receipt file size must be less than 5MB")
+                                return
+                            receipt_data = base64.b64encode(receipt.read()).decode()
+
+                        # Update transaction
+                        self.db.update_transaction(
+                            user_id=self.user_id,
+                            transaction_id=int(transaction['id']),
+                            description=description.strip(),
+                            amount=amount,
+                            date=date_str,
+                            type=trans_type,
+                            category=category,
+                            receipt_image=receipt_data
+                        )
+                        st.success("✅ Transaction updated successfully!")
+
+                        # Reset edit mode
+                        st.session_state.edit_mode = False
+                        st.session_state.selected_transaction = None
+                        st.rerun()
+
+                    except ValueError as e:
+                        st.error(f"Invalid input: {e}")
+                    except Exception as e:
+                        st.error(f"Failed to update transaction: {e}")
+
+                if cancel_edit:
+                    st.session_state.edit_mode = False
+                    st.session_state.selected_transaction = None
+                    st.rerun()
+
+        except IndexError:
+            st.error("Transaction not found. It may have been deleted.")
+            st.session_state.selected_transaction = None
+            st.session_state.edit_mode = False
+        except Exception as e:
+            st.error(f"Error loading transaction details: {e}")
+            st.session_state.selected_transaction = None
+            st.session_state.edit_mode = False
+
+    def _inline_delete_transaction_form(self, transaction):
+        """Inline form for deleting selected transactions directly below action buttons."""
+        try:
+            # Transaction is already passed as a single row (Series or dict)
+            st.markdown("**Delete Transaction**")
+            st.caption(f"Transaction: {transaction['description']} - ${transaction['amount']:.2f}")
+
+            st.warning("Are you sure you want to delete this transaction?")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🗑️ Yes, Delete Transaction", use_container_width=True, type="primary"):
+                    try:
+                        self.db.delete_transaction(self.user_id, int(transaction['id']))
+                        st.success("✅ Transaction deleted successfully!")
+
+                        # Reset delete confirmation
+                        st.session_state.delete_confirm = False
+                        st.session_state.selected_transaction = None
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(f"Failed to delete transaction: {e}")
+
+            with col2:
+                if st.button("❌ Cancel", use_container_width=True):
+                    st.session_state.delete_confirm = False
+                    st.session_state.selected_transaction = None
+                    st.rerun()
+
+        except IndexError:
+            st.error("Transaction not found. It may have already been deleted.")
+            st.session_state.selected_transaction = None
+            st.session_state.delete_confirm = False
+        except Exception as e:
+            st.error(f"Error loading transaction details: {e}")
+            st.session_state.selected_transaction = None
+            st.session_state.delete_confirm = False
+
+    def _delete_transaction_form(self, transactions_df):
+        """Form for deleting selected transactions in tabs (only when no inline selection)."""
+        # Only show tab form if no transaction is selected for inline deleting
+        if (st.session_state.delete_confirm or st.session_state.selected_transaction) and not st.session_state.selected_transaction:
+            if st.session_state.selected_transaction:
+                try:
+                    transaction = transactions_df[transactions_df['id'] == st.session_state.selected_transaction].iloc[0]
+
+                    st.warning(f"Are you sure you want to delete this transaction?")
+                    st.write("**Description:**", transaction['description'])
+                    st.write("**Amount:**", f"${transaction['amount']:.2f}")
+                    st.write("**Date:**", transaction['date'])
+                    st.write("**Type:**", transaction['type'])
+                    st.write("**Category:**", transaction['category'])
+
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("🗑️ Yes, Delete Transaction", use_container_width=True, type="primary"):
+                            try:
+                                self.db.delete_transaction(self.user_id, int(transaction['id']))
+                                st.success("✅ Transaction deleted successfully!")
+
+                                # Reset delete confirmation
+                                st.session_state.delete_confirm = False
+                                st.session_state.selected_transaction = None
+                                st.rerun()
+
+                            except Exception as e:
+                                st.error(f"Failed to delete transaction: {e}")
+
+                    with col2:
+                        if st.button("❌ Cancel", use_container_width=True):
+                            st.session_state.delete_confirm = False
+                            st.session_state.selected_transaction = None
+                            st.rerun()
+
+                except IndexError:
+                    st.error("Transaction not found. It may have already been deleted.")
+                    st.session_state.selected_transaction = None
+                    st.session_state.delete_confirm = False
+                except Exception as e:
+                    st.error(f"Error loading transaction details: {e}")
+                    st.session_state.selected_transaction = None
+                    st.session_state.delete_confirm = False
+            else:
+                st.info("Select a transaction from the table below to delete it.")
+        else:
+            st.info("Select a transaction from the table below or use the '🗑️ Quick Delete' button.")
+
+    def _show_transaction_details(self, transaction):
+        """Show detailed view of a transaction."""
+        with st.expander("Transaction Details", expanded=True):
+            det_col1, det_col2 = st.columns(2)
+
+            with det_col1:
+                st.write("**ID:**", transaction['id'])
+                st.write("**Description:**", transaction['description'])
+                st.write("**Amount:**", f"${transaction['amount']:.2f}")
+                st.write("**Type:**", transaction['type'].title())
+
+            with det_col2:
+                st.write("**Date:**", transaction['date'])
+                st.write("**Category:**", transaction['category'].title())
+                st.write("**Created:**", transaction['created_at'])
+
+            if transaction['receipt_image']:
+                st.subheader("📄 Receipt")
+                try:
+                    receipt_data = base64.b64decode(transaction['receipt_image'])
+                    st.image(receipt_data, caption="Transaction Receipt", use_column_width=True)
+                except Exception as e:
+                    st.error("Could not display receipt image.")
 
     def display_dashboard(self):
         """Display the main dashboard with improved error handling."""
